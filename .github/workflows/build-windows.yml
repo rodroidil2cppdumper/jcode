@@ -4,40 +4,49 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write # Required to create tags and releases
+  contents: write
 
 jobs:
   build-and-release:
-    runs-on: windows-latest
+    runs-on: windows-mega
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Required so it can push tags back to the repo
+          fetch-depth: 0
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      # THIS IS THE MAGIC: Saves the 788 compiled crates so it's fast next time
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: windows-mega-build
 
       - name: Extract version from Cargo.toml
         id: get_version
         shell: bash
         run: |
-          # Finds the version = "0.64.2" line and extracts the number
           VERSION=$(grep '^version = ' Cargo.toml | head -n 1 | cut -d '"' -f 2)
           echo "VERSION=v$VERSION" >> $GITHUB_ENV
-          echo "Detected version: v$VERSION"
 
-      - name: Build all binaries (Max Optimization)
+      - name: Build ONLY jcode binary (Max Optimization)
         run: cargo build --release --target x86_64-pc-windows-msvc --bin jcode
+
+      # THIS SAVES THE BINARY EVEN IF THE NEXT STEP FAILS
+      - name: Upload Windows Binary as Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jcode-windows-x86_64
+          path: target/x86_64-pc-windows-msvc/release/jcode.exe
 
       - name: Create Git Tag and Push
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # Check if tag already exists so we don't fail the workflow
           if git rev-parse "$VERSION" >/dev/null 2>&1; then
             echo "Tag $VERSION already exists."
           else
@@ -45,21 +54,16 @@ jobs:
             git push origin "$VERSION"
           fi
 
-      - name: Create GitHub Release and Upload Assets
+      - name: Create GitHub Release and Upload jcode.exe
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Create the release. If it already exists, it will just upload/overwrite the binaries.
           gh release create "$VERSION" \
             --title "jcode $VERSION (Windows x86_64)" \
-            --notes "Hyper-optimized Windows binaries compiled with lto=fat and opt-level=3 on Enterprise runner." \
+            --notes "Hyper-optimized Windows binary." \
             --target master \
             target/x86_64-pc-windows-msvc/release/jcode.exe \
-            target/x86_64-pc-windows-msvc/release/test_api.exe \
-            target/x86_64-pc-windows-msvc/release/jcode-harness.exe \
             || gh release upload "$VERSION" \
             target/x86_64-pc-windows-msvc/release/jcode.exe \
-            target/x86_64-pc-windows-msvc/release/test_api.exe \
-            target/x86_64-pc-windows-msvc/release/jcode-harness.exe \
             --clobber
