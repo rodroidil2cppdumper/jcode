@@ -271,21 +271,24 @@ objc2-app-kit = { version = "0.3", features = [
 ] }
 
 [profile.release]
-opt-level = 1
-debug = 0
-codegen-units = 256
-incremental = true
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+debug = false
+overflow-checks = false
+
+[profile.release.package."*"] 
+opt-level = 3
+codegen-units = 1
+strip = true
+debug = false
+overflow-checks = false
 
 [profile.selfdev]
 inherits = "release"
 opt-level = 0
-
-# Full LTO release for stable/distribution builds
-[profile.release-lto]
-inherits = "release"
-lto = "thin"
-codegen-units = 16
-incremental = false
 
 [profile.dev]
 debug = 0
